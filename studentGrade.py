@@ -5,7 +5,7 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 
 # ---- تنظیمات ----
-BOT_TOKEN = "8226892308:AAGxiXNSnhikdaR9xHhF0n4Sq4l2YxASJ34"
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_ID = 100724696  # 🔹 آیدی تلگرام ادمین را اینجا وارد کن
 UPLOAD_DIR = "uploaded_excels"
 
@@ -153,3 +153,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
