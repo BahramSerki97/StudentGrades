@@ -1,5 +1,10 @@
 # main.py
-# Telegram Bot with Admin Panel, Multi-course support, Bulk Grade Entry
+# Telegram Bot with Advanced Admin Panel
+# Features:
+# - Admin & Student panels
+# - Multi-course support
+# - Bulk grade entry in multiple messages
+# - Edit grade, delete grade, delete course
 
 import os
 import sqlite3
@@ -29,7 +34,8 @@ cursor.execute("""
 CREATE TABLE IF NOT EXISTS grades (
     student_id TEXT,
     course TEXT,
-    grade TEXT
+    grade TEXT,
+    UNIQUE(student_id, course)
 )
 """)
 conn.commit()
@@ -37,6 +43,9 @@ conn.commit()
 # ================== STATES ==================
 NAME, FAMILY, STUDENT_ID = range(3)
 ADMIN_MENU, COURSE_NAME, BULK_GRADES = range(3, 6)
+EDIT_SID, EDIT_COURSE, EDIT_GRADE = range(6, 9)
+DEL_SID, DEL_COURSE = range(9, 11)
+DEL_ONLY_COURSE = 11
 
 # ================== STUDENT ==================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -103,7 +112,7 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("دسترسی غیر مجاز")
         return ConversationHandler.END
 
-    keyboard = [["➕ ثبت نمرات گروهی"]]
+    keyboard = [["➕ ثبت نمرات"], ["✏️ ویرایش نمره"], ["🗑 حذف نمره"], ["🗑 حذف درس"]]
     await update.message.reply_text(
         "پنل ادمین:",
         reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
@@ -111,36 +120,99 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ADMIN_MENU
 
 async def admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.text == "➕ ثبت نمرات گروهی":
+    text = update.message.text
+    if text == "➕ ثبت نمرات":
         await update.message.reply_text("نام درس را وارد کنید:")
         return COURSE_NAME
+    if text == "✏️ ویرایش نمره":
+        await update.message.reply_text("شماره دانشجویی:")
+        return EDIT_SID
+    if text == "🗑 حذف نمره":
+        await update.message.reply_text("شماره دانشجویی:")
+        return DEL_SID
+    if text == "🗑 حذف درس":
+        await update.message.reply_text("نام درس:")
+        return DEL_ONLY_COURSE
 
+# -------- Bulk grades (multi-message) --------
 async def get_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['course'] = update.message.text
     await update.message.reply_text(
-        "لیست نمرات را ارسال کنید به صورت:\n"
-        "40123456 18\n40123457 16\n40123458 20"
+        "نمرات را ارسال کنید (هر پیام می‌تواند چند خط باشد).\n"
+        "فرمت هر خط: شماره_دانشجویی نمره\n"
+        "برای پایان، کلمه END را بفرستید"
     )
+    context.user_data['bulk_count'] = 0
     return BULK_GRADES
 
 async def bulk_grades(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.message.text.strip().upper() == "END":
+        await update.message.reply_text(
+            f"ثبت نمرات پایان یافت. مجموع ثبت‌شده: {context.user_data['bulk_count']}"
+        )
+        return ConversationHandler.END
+
     course = context.user_data['course']
     lines = update.message.text.splitlines()
-    saved = 0
 
     for line in lines:
         try:
             sid, grade = line.split()
             cursor.execute(
-                "INSERT INTO grades VALUES (?,?,?)",
+                "INSERT OR REPLACE INTO grades VALUES (?,?,?)",
                 (sid, course, grade)
             )
-            saved += 1
+            context.user_data['bulk_count'] += 1
         except:
             continue
 
     conn.commit()
-    await update.message.reply_text(f"{saved} نمره ثبت شد ✅")
+    await update.message.reply_text("بخش دیگری از نمرات ذخیره شد…")
+    return BULK_GRADES
+
+# -------- Edit grade --------
+async def edit_sid(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['sid'] = update.message.text
+    await update.message.reply_text("نام درس:")
+    return EDIT_COURSE
+
+async def edit_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['course'] = update.message.text
+    await update.message.reply_text("نمره جدید:")
+    return EDIT_GRADE
+
+async def edit_grade(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    cursor.execute(
+        "UPDATE grades SET grade=? WHERE student_id=? AND course=?",
+        (update.message.text, context.user_data['sid'], context.user_data['course'])
+    )
+    conn.commit()
+    await update.message.reply_text("نمره ویرایش شد ✅")
+    return ConversationHandler.END
+
+# -------- Delete grade --------
+async def del_sid(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data['sid'] = update.message.text
+    await update.message.reply_text("نام درس:")
+    return DEL_COURSE
+
+async def del_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    cursor.execute(
+        "DELETE FROM grades WHERE student_id=? AND course=?",
+        (context.user_data['sid'], update.message.text)
+    )
+    conn.commit()
+    await update.message.reply_text("نمره حذف شد 🗑")
+    return ConversationHandler.END
+
+# -------- Delete whole course --------
+async def del_whole_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    cursor.execute(
+        "DELETE FROM grades WHERE course=?",
+        (update.message.text,)
+    )
+    conn.commit()
+    await update.message.reply_text("تمام نمرات این درس حذف شد 🗑")
     return ConversationHandler.END
 
 # ================== APP ==================
@@ -165,6 +237,12 @@ app.add_handler(ConversationHandler(
         ADMIN_MENU: [MessageHandler(filters.TEXT, admin_menu)],
         COURSE_NAME: [MessageHandler(filters.TEXT, get_course)],
         BULK_GRADES: [MessageHandler(filters.TEXT, bulk_grades)],
+        EDIT_SID: [MessageHandler(filters.TEXT, edit_sid)],
+        EDIT_COURSE: [MessageHandler(filters.TEXT, edit_course)],
+        EDIT_GRADE: [MessageHandler(filters.TEXT, edit_grade)],
+        DEL_SID: [MessageHandler(filters.TEXT, del_sid)],
+        DEL_COURSE: [MessageHandler(filters.TEXT, del_course)],
+        DEL_ONLY_COURSE: [MessageHandler(filters.TEXT, del_whole_course)],
     },
     fallbacks=[]
 ))
