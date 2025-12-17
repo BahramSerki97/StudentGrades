@@ -1,14 +1,14 @@
 import os
 import sqlite3
-from flask import Flask, request
 from telegram import Update
 from telegram.ext import (
-    ApplicationBuilder, CommandHandler, MessageHandler,
+    Application, ApplicationBuilder,
+    CommandHandler, MessageHandler,
     ConversationHandler, ContextTypes, filters
 )
 
-TOKEN = os.environ.get("BOT_TOKEN")
-ADMIN_IDS = 100724696
+TOKEN = os.environ["BOT_TOKEN"]
+ADMIN_IDS = {100724696}
 
 # ================== DATABASE ==================
 conn = sqlite3.connect("grades.db", check_same_thread=False)
@@ -38,61 +38,67 @@ GRADE_STUDENT_ID, GRADE_COURSE, GRADE_VALUE = range(3, 6)
 
 # ================== BOT LOGIC ==================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("سلام! برای ثبت نام دستور /register را بزنید")
+    await update.message.reply_text("سلام! برای ثبت نام /register را بزنید")
 
 async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("نام خود را وارد کنید:")
+    await update.message.reply_text("نام:")
     return NAME
 
 async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['name'] = update.message.text
-    await update.message.reply_text("نام خانوادگی را وارد کنید:")
+    context.user_data["name"] = update.message.text
+    await update.message.reply_text("نام خانوادگی:")
     return FAMILY
 
 async def get_family(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['family'] = update.message.text
-    await update.message.reply_text("شماره دانشجویی را وارد کنید:")
+    context.user_data["family"] = update.message.text
+    await update.message.reply_text("شماره دانشجویی:")
     return STUDENT_ID
 
 async def get_student_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         cursor.execute(
             "INSERT INTO students VALUES (?,?,?,?)",
-            (update.effective_user.id,
-             context.user_data['name'],
-             context.user_data['family'],
-             update.message.text)
+            (
+                update.effective_user.id,
+                context.user_data["name"],
+                context.user_data["family"],
+                update.message.text
+            )
         )
         conn.commit()
-        await update.message.reply_text("ثبت نام با موفقیت انجام شد")
+        await update.message.reply_text("ثبت نام انجام شد ✅")
     except:
-        await update.message.reply_text("این شماره دانشجویی قبلا ثبت شده")
+        await update.message.reply_text("این شماره قبلاً ثبت شده")
     return ConversationHandler.END
 
 async def add_grade(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("دسترسی غیر مجاز")
+        await update.message.reply_text("دسترسی غیرمجاز")
         return ConversationHandler.END
     await update.message.reply_text("شماره دانشجویی:")
     return GRADE_STUDENT_ID
 
 async def grade_student_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['sid'] = update.message.text
+    context.user_data["sid"] = update.message.text
     await update.message.reply_text("نام درس:")
     return GRADE_COURSE
 
 async def grade_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['course'] = update.message.text
+    context.user_data["course"] = update.message.text
     await update.message.reply_text("نمره:")
     return GRADE_VALUE
 
 async def grade_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cursor.execute(
         "INSERT INTO grades VALUES (?,?,?)",
-        (context.user_data['sid'], context.user_data['course'], update.message.text)
+        (
+            context.user_data["sid"],
+            context.user_data["course"],
+            update.message.text
+        )
     )
     conn.commit()
-    await update.message.reply_text("نمره ثبت شد")
+    await update.message.reply_text("نمره ثبت شد ✅")
     return ConversationHandler.END
 
 async def my_grades(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -109,59 +115,53 @@ async def my_grades(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "SELECT course, grade FROM grades WHERE student_id=?",
         (row[0],)
     )
-    results = cursor.fetchall()
+    rows = cursor.fetchall()
 
-    if not results:
-        await update.message.reply_text("نمره ای ثبت نشده")
+    if not rows:
+        await update.message.reply_text("نمره‌ای ثبت نشده")
         return
 
     msg = "نمرات شما:\n"
-    for c, g in results:
+    for c, g in rows:
         msg += f"{c}: {g}\n"
     await update.message.reply_text(msg)
 
 # ================== APPLICATION ==================
-application = ApplicationBuilder().token(TOKEN).build()
+def build_app() -> Application:
+    app = ApplicationBuilder().token(TOKEN).build()
 
-application.add_handler(CommandHandler("start", start))
-application.add_handler(CommandHandler("mygrades", my_grades))
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("mygrades", my_grades))
 
-application.add_handler(ConversationHandler(
-    entry_points=[CommandHandler("register", register)],
-    states={
-        NAME: [MessageHandler(filters.TEXT, get_name)],
-        FAMILY: [MessageHandler(filters.TEXT, get_family)],
-        STUDENT_ID: [MessageHandler(filters.TEXT, get_student_id)],
-    },
-    fallbacks=[]
-))
+    app.add_handler(ConversationHandler(
+        entry_points=[CommandHandler("register", register)],
+        states={
+            NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_name)],
+            FAMILY: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_family)],
+            STUDENT_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_student_id)],
+        },
+        fallbacks=[]
+    ))
 
-application.add_handler(ConversationHandler(
-    entry_points=[CommandHandler("addgrade", add_grade)],
-    states={
-        GRADE_STUDENT_ID: [MessageHandler(filters.TEXT, grade_student_id)],
-        GRADE_COURSE: [MessageHandler(filters.TEXT, grade_course)],
-        GRADE_VALUE: [MessageHandler(filters.TEXT, grade_value)],
-    },
-    fallbacks=[]
-))
+    app.add_handler(ConversationHandler(
+        entry_points=[CommandHandler("addgrade", add_grade)],
+        states={
+            GRADE_STUDENT_ID: [MessageHandler(filters.TEXT, grade_student_id)],
+            GRADE_COURSE: [MessageHandler(filters.TEXT, grade_course)],
+            GRADE_VALUE: [MessageHandler(filters.TEXT, grade_value)],
+        },
+        fallbacks=[]
+    ))
 
-# ================== FLASK (Render) ==================
-flask_app = Flask(__name__)
+    return app
 
-@flask_app.route("/")
-def home():
-    return "Bot is alive"
-
-@flask_app.post("/webhook")
-async def webhook():
-    data = request.get_json()
-    update = Update.de_json(data, application.bot)
-    await application.process_update(update)
-    return "ok"
-
+# ================== WEBHOOK RUN ==================
 if __name__ == "__main__":
-    flask_app.run(
-        host="0.0.0.0",
-        port=int(os.environ.get("PORT", 10000))
+    PORT = int(os.environ.get("PORT", 10000))
+    application = build_app()
+
+    application.run_webhook(
+        listen="0.0.0.0",
+        port=PORT,
+        webhook_url=os.environ["WEBHOOK_URL"]
     )
