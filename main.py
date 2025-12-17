@@ -8,7 +8,7 @@ from telegram.ext import (
 )
 
 TOKEN = os.environ.get("BOT_TOKEN")
-ADMIN_IDS = os.environ.get("ADMIN_ID")
+ADMIN_IDS = 100724696
 
 # ================== DATABASE ==================
 conn = sqlite3.connect("grades.db", check_same_thread=False)
