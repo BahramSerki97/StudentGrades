@@ -46,6 +46,7 @@ ADMIN_MENU, COURSE_NAME, BULK_GRADES = range(3, 6)
 EDIT_SID, EDIT_COURSE, EDIT_GRADE = range(6, 9)
 DEL_SID, DEL_COURSE = range(9, 11)
 DEL_ONLY_COURSE = 11
+DEL_STUDENT = 12
 
 # ================== STUDENT ==================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -112,7 +113,7 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("دسترسی غیر مجاز")
         return ConversationHandler.END
 
-    keyboard = [["➕ ثبت نمرات"], ["✏️ ویرایش نمره"], ["🗑 حذف نمره"], ["🗑 حذف درس"]]
+    keyboard = [["➕ ثبت نمرات"], ["✏️ ویرایش نمره"], ["🗑 حذف نمره"], ["🗑 حذف درس"], ["👥 لیست دانشجوها"], ["🗑 حذف دانشجو"]]
     await update.message.reply_text(
         "پنل ادمین:",
         reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
@@ -131,6 +132,24 @@ async def admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("شماره دانشجویی:")
         return DEL_SID
     if text == "🗑 حذف درس":
+        await update.message.reply_text("نام درس:")
+        return DEL_ONLY_COURSE
+    if text == "👥 لیست دانشجوها":
+        cursor.execute("SELECT student_id, name, family FROM students")
+        rows = cursor.fetchall()
+        if not rows:
+            await update.message.reply_text("دانشجویی ثبت نشده")
+        else:
+            msg = "لیست دانشجوها:
+"
+            for sid, n, f in rows:
+                msg += f"{sid} - {n} {f}
+"
+            await update.message.reply_text(msg)
+        return ADMIN_MENU
+    if text == "🗑 حذف دانشجو":
+        await update.message.reply_text("شماره دانشجویی دانشجو:")
+        return DEL_STUDENT
         await update.message.reply_text("نام درس:")
         return DEL_ONLY_COURSE
 
@@ -205,6 +224,22 @@ async def del_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("نمره حذف شد 🗑")
     return ConversationHandler.END
 
+# -------- Delete student --------
+async def del_student(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    sid = update.message.text
+    cursor.execute("SELECT name, family FROM students WHERE student_id=?", (sid,))
+    row = cursor.fetchone()
+    if not row:
+        await update.message.reply_text("دانشجو پیدا نشد")
+        return ConversationHandler.END
+
+    cursor.execute("DELETE FROM grades WHERE student_id=?", (sid,))
+    cursor.execute("DELETE FROM students WHERE student_id=?", (sid,))
+    conn.commit()
+
+    await update.message.reply_text(f"دانشجو {row[0]} {row[1]} حذف شد 🗑")
+    return ConversationHandler.END
+
 # -------- Delete whole course --------
 async def del_whole_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cursor.execute(
@@ -243,6 +278,7 @@ app.add_handler(ConversationHandler(
         DEL_SID: [MessageHandler(filters.TEXT, del_sid)],
         DEL_COURSE: [MessageHandler(filters.TEXT, del_course)],
         DEL_ONLY_COURSE: [MessageHandler(filters.TEXT, del_whole_course)],
+        DEL_STUDENT: [MessageHandler(filters.TEXT, del_student)],
     },
     fallbacks=[]
 ))
