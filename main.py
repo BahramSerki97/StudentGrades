@@ -10,7 +10,7 @@ from telegram.ext import (
 )
 
 TOKEN = os.environ["BOT_TOKEN"]
-ADMIN_IDS = {123456789}  # replace with real admin IDs
+ADMIN_IDS = {100724696}  # replace with real admin IDs
 
 # ================== DATABASE ==================
 conn = sqlite3.connect("grades.db", check_same_thread=False)
