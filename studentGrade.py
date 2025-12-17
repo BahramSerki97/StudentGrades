@@ -6,7 +6,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, ContextTyp
 
 # ---- تنظیمات ----
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-ADMIN_ID = 100724696  # 🔹 آیدی تلگرام ادمین را اینجا وارد کن
+ADMIN_ID = os.getenv("ADMIN_ID")  # 🔹 آیدی تلگرام ادمین را اینجا وارد کن
 UPLOAD_DIR = "uploaded_excels"
 
 # ---- متغیرهای سراسری ----
@@ -153,4 +153,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
