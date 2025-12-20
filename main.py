@@ -1,5 +1,3 @@
-# main.py — Neon PostgreSQL version (FINAL)
-
 import os
 import time
 import psycopg2
@@ -9,33 +7,37 @@ from telegram.ext import (
     ConversationHandler, ContextTypes, filters
 )
 
-# ================== CONFIG ==================
-TOKEN = os.environ["BOT_TOKEN"]
-ADMIN_IDS = {100724696}  # <-- ادمین‌ها
+# ================== ENV ==================
+BOT_TOKEN = os.environ["BOT_TOKEN"]
+SUPER_ADMIN_ID = int(os.environ["SUPER_ADMIN_ID"])
 
-DB_CONFIG = {
-    "host": os.environ["DB_HOST"],
-    "dbname": os.environ["DB_NAME"],
-    "user": os.environ["DB_USER"],
-    "password": os.environ["DB_PASSWORD"],
-    "port": int(os.environ.get("DB_PORT", 5432)),
-    "sslmode": os.environ.get("DB_SSL", "require"),
-}
+DB_HOST = os.environ["DB_HOST"]
+DB_PORT = os.environ.get("DB_PORT", "5432")
+DB_NAME = os.environ["DB_NAME"]
+DB_USER = os.environ["DB_USER"]
+DB_PASSWORD = os.environ["DB_PASSWORD"]
 
-# ================== DB CONNECT ==================
-def get_db():
-    for i in range(5):
+# ================== DATABASE ==================
+def get_db(retries=5, delay=2):
+    for i in range(retries):
         try:
-            return psycopg2.connect(**DB_CONFIG)
+            return psycopg2.connect(
+                host=DB_HOST,
+                port=DB_PORT,
+                dbname=DB_NAME,
+                user=DB_USER,
+                password=DB_PASSWORD,
+                sslmode="require"
+            )
         except Exception as e:
-            print(f"DB connection failed ({i+1}/5):", e)
-            time.sleep(2)
+            print(f"DB connection failed ({i+1}/{retries}): {e}")
+            time.sleep(delay)
     raise RuntimeError("Could not connect to database")
 
 conn = get_db()
 cursor = conn.cursor()
 
-# ================== DB INIT ==================
+# ================== TABLES ==================
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS students (
     telegram_id BIGINT PRIMARY KEY,
@@ -54,7 +56,26 @@ CREATE TABLE IF NOT EXISTS grades (
 )
 """)
 
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS admins (
+    telegram_id BIGINT PRIMARY KEY
+)
+""")
+
+# bootstrap super admin
+cursor.execute(
+    "INSERT INTO admins VALUES (%s) ON CONFLICT DO NOTHING",
+    (SUPER_ADMIN_ID,)
+)
 conn.commit()
+
+# ================== HELPERS ==================
+def is_admin(user_id: int) -> bool:
+    cursor.execute(
+        "SELECT 1 FROM admins WHERE telegram_id=%s",
+        (user_id,)
+    )
+    return cursor.fetchone() is not None
 
 # ================== STATES ==================
 NAME, FAMILY, STUDENT_ID = range(3)
@@ -67,7 +88,9 @@ DEL_STUDENT = 12
 # ================== STUDENT ==================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "سلام 👋\n/register ثبت نام\n/mygrades مشاهده نمرات"
+        "سلام 👋\n"
+        "/register ثبت نام\n"
+        "/mygrades مشاهده نمرات"
     )
 
 async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -92,13 +115,13 @@ async def get_student_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 update.effective_user.id,
                 context.user_data["name"],
                 context.user_data["family"],
-                update.message.text,
+                update.message.text
             )
         )
         conn.commit()
-        await update.message.reply_text("ثبت نام انجام شد ✅")
-    except Exception:
-        await update.message.reply_text("شماره دانشجویی تکراری است")
+        await update.message.reply_text("ثبت نام با موفقیت انجام شد ✅")
+    except:
+        await update.message.reply_text("این شماره دانشجویی قبلاً ثبت شده")
     return ConversationHandler.END
 
 async def my_grades(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -127,7 +150,7 @@ async def my_grades(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ================== ADMIN ==================
 async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id not in ADMIN_IDS:
+    if not is_admin(update.effective_user.id):
         await update.message.reply_text("دسترسی غیر مجاز")
         return ConversationHandler.END
 
@@ -181,21 +204,59 @@ async def admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("شماره دانشجویی:")
         return DEL_STUDENT
 
-# -------- Bulk grades --------
+# ================== ADMIN COMMANDS ==================
+async def add_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        await update.message.reply_text("دسترسی غیر مجاز")
+        return
+
+    try:
+        new_admin_id = int(context.args[0])
+        cursor.execute(
+            "INSERT INTO admins VALUES (%s) ON CONFLICT DO NOTHING",
+            (new_admin_id,)
+        )
+        conn.commit()
+        await update.message.reply_text("ادمین جدید اضافه شد ✅")
+    except:
+        await update.message.reply_text("فرمت صحیح:\n/addadmin USER_ID")
+
+async def remove_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != SUPER_ADMIN_ID:
+        await update.message.reply_text("فقط سوپرادمین اجازه حذف ادمین دارد")
+        return
+
+    try:
+        admin_id = int(context.args[0])
+        if admin_id == SUPER_ADMIN_ID:
+            await update.message.reply_text("سوپرادمین قابل حذف نیست")
+            return
+
+        cursor.execute(
+            "DELETE FROM admins WHERE telegram_id=%s",
+            (admin_id,)
+        )
+        conn.commit()
+        await update.message.reply_text("ادمین حذف شد 🗑")
+    except:
+        await update.message.reply_text("فرمت صحیح:\n/removeadmin USER_ID")
+
+# ================== GRADES ==================
 async def get_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["course"] = update.message.text
     context.user_data["count"] = 0
     await update.message.reply_text(
-        "نمرات را بفرستید:\n"
+        "نمرات را ارسال کنید:\n"
         "هر خط: شماره_دانشجویی نمره\n"
-        "END برای پایان"
+        "برای پایان END را بفرستید"
     )
     return BULK_GRADES
 
 async def bulk_grades(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.text.strip().upper() == "END":
         await update.message.reply_text(
-            f"پایان ثبت نمرات. مجموع: {context.user_data['count']}"
+            f"پایان ثبت نمرات ✅\n"
+            f"تعداد ثبت‌شده: {context.user_data['count']}"
         )
         return ConversationHandler.END
 
@@ -203,8 +264,11 @@ async def bulk_grades(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             sid, grade = line.split()
             cursor.execute(
-                "INSERT INTO grades VALUES (%s,%s,%s) "
-                "ON CONFLICT (student_id, course) DO UPDATE SET grade=EXCLUDED.grade",
+                """
+                INSERT INTO grades VALUES (%s,%s,%s)
+                ON CONFLICT (student_id, course)
+                DO UPDATE SET grade=EXCLUDED.grade
+                """,
                 (sid, context.user_data["course"], grade)
             )
             context.user_data["count"] += 1
@@ -212,10 +276,9 @@ async def bulk_grades(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
 
     conn.commit()
-    await update.message.reply_text("ذخیره شد…")
+    await update.message.reply_text("بخشی از نمرات ذخیره شد…")
     return BULK_GRADES
 
-# -------- Edit grade --------
 async def edit_sid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["sid"] = update.message.text
     await update.message.reply_text("نام درس:")
@@ -232,10 +295,9 @@ async def edit_grade(update: Update, context: ContextTypes.DEFAULT_TYPE):
         (update.message.text, context.user_data["sid"], context.user_data["course"])
     )
     conn.commit()
-    await update.message.reply_text("ویرایش شد ✅")
+    await update.message.reply_text("نمره ویرایش شد ✅")
     return ConversationHandler.END
 
-# -------- Delete grade --------
 async def del_sid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["sid"] = update.message.text
     await update.message.reply_text("نام درس:")
@@ -250,7 +312,6 @@ async def del_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("نمره حذف شد 🗑")
     return ConversationHandler.END
 
-# -------- Delete student --------
 async def del_student(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sid = update.message.text
     cursor.execute("DELETE FROM grades WHERE student_id=%s", (sid,))
@@ -259,18 +320,24 @@ async def del_student(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("دانشجو حذف شد 🗑")
     return ConversationHandler.END
 
-# -------- Delete course --------
 async def del_whole_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    cursor.execute("DELETE FROM grades WHERE course=%s", (update.message.text,))
+    cursor.execute(
+        "DELETE FROM grades WHERE course=%s",
+        (update.message.text,)
+    )
     conn.commit()
-    await update.message.reply_text("درس حذف شد 🗑")
+    await update.message.reply_text("درس و نمراتش حذف شد 🗑")
     return ConversationHandler.END
 
 # ================== APP ==================
-app = ApplicationBuilder().token(TOKEN).build()
+app = ApplicationBuilder().token(BOT_TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("register", register))
 app.add_handler(CommandHandler("mygrades", my_grades))
+app.add_handler(CommandHandler("admin", admin))
+app.add_handler(CommandHandler("addadmin", add_admin))
+app.add_handler(CommandHandler("removeadmin", remove_admin))
 
 app.add_handler(ConversationHandler(
     entry_points=[CommandHandler("register", register)],
@@ -299,9 +366,4 @@ app.add_handler(ConversationHandler(
     fallbacks=[]
 ))
 
-if __name__ == "__main__":
-    app.run_webhook(
-        listen="0.0.0.0",
-        port=int(os.environ.get("PORT", 10000)),
-        webhook_url=os.environ["WEBHOOK_URL"]
-    )
+app.run_polling()
