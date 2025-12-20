@@ -23,13 +23,14 @@ DB_PORT = os.environ.get("SUPABASE_PORT", "5432")
 
 # ================== DATABASE ==================
 conn = psycopg2.connect(
-    host=DB_HOST,
-    database=DB_NAME,
-    user=DB_USER,
-    password=DB_PASS,
-    port=DB_PORT
+    host=os.environ["SUPABASE_HOST"],
+    port=os.environ["SUPABASE_PORT"],
+    dbname=os.environ["SUPABASE_DB"],
+    user=os.environ["SUPABASE_USER"],
+    password=os.environ["SUPABASE_PASSWORD"],
+    sslmode="require"
 )
-conn.autocommit = True
+
 cursor = conn.cursor()
 
 cursor.execute("""
