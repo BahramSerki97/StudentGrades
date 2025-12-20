@@ -1,9 +1,9 @@
 # main.py
-# Telegram Bot with Supabase PostgreSQL (Persistent DB)
-# python-telegram-bot==20.7
-# psycopg2-binary required
+# Telegram Bot with Advanced Admin Panel + Supabase (PostgreSQL)
+# Compatible with Render Free + Supabase Pooler (IPv4)
 
 import os
+import time
 import psycopg2
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import (
@@ -13,24 +13,29 @@ from telegram.ext import (
 
 # ================== CONFIG ==================
 TOKEN = os.environ["BOT_TOKEN"]
-ADMIN_IDS = {100724696}  # replace
-
-DB_HOST = os.environ["SUPABASE_HOST"]
-DB_NAME = os.environ["SUPABASE_DB"]
-DB_USER = os.environ["SUPABASE_USER"]
-DB_PASS = os.environ["SUPABASE_PASSWORD"]
-DB_PORT = os.environ.get("SUPABASE_PORT", "5432")
+WEBHOOK_URL = os.environ["WEBHOOK_URL"]
+ADMIN_IDS = {100724696}  # <-- admin telegram user_id
 
 # ================== DATABASE ==================
-conn = psycopg2.connect(
-    host=os.environ["SUPABASE_HOST"],
-    port=os.environ["SUPABASE_PORT"],
-    dbname=os.environ["SUPABASE_DB"],
-    user=os.environ["SUPABASE_USER"],
-    password=os.environ["SUPABASE_PASSWORD"],
-    sslmode="require"
-)
+def get_db():
+    for i in range(5):
+        try:
+            conn = psycopg2.connect(
+                host=os.environ["SUPABASE_HOST"],
+                port=int(os.environ["SUPABASE_PORT"]),
+                dbname=os.environ["SUPABASE_DB"],
+                user=os.environ["SUPABASE_USER"],
+                password=os.environ["SUPABASE_PASSWORD"],
+                sslmode="require",
+                connect_timeout=10
+            )
+            return conn
+        except Exception as e:
+            print(f"DB connection failed ({i+1}/5): {e}")
+            time.sleep(2)
+    raise RuntimeError("Could not connect to database")
 
+conn = get_db()
 cursor = conn.cursor()
 
 cursor.execute("""
@@ -39,15 +44,18 @@ CREATE TABLE IF NOT EXISTS students (
     name TEXT,
     family TEXT,
     student_id TEXT UNIQUE
-);
+)
+""")
 
+cursor.execute("""
 CREATE TABLE IF NOT EXISTS grades (
-    student_id TEXT REFERENCES students(student_id) ON DELETE CASCADE,
+    student_id TEXT,
     course TEXT,
     grade TEXT,
     UNIQUE(student_id, course)
-);
+)
 """)
+conn.commit()
 
 # ================== STATES ==================
 NAME, FAMILY, STUDENT_ID = range(3)
@@ -60,7 +68,9 @@ DEL_STUDENT = 12
 # ================== STUDENT ==================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "سلام!\n/register ثبت نام\n/mygrades مشاهده نمرات"
+        "سلام 👋\n"
+        "/register ثبت نام\n"
+        "/mygrades مشاهده نمرات"
     )
 
 async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -68,12 +78,12 @@ async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return NAME
 
 async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['name'] = update.message.text
+    context.user_data["name"] = update.message.text
     await update.message.reply_text("نام خانوادگی:")
     return FAMILY
 
 async def get_family(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['family'] = update.message.text
+    context.user_data["family"] = update.message.text
     await update.message.reply_text("شماره دانشجویی:")
     return STUDENT_ID
 
@@ -81,13 +91,16 @@ async def get_student_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         cursor.execute(
             "INSERT INTO students VALUES (%s,%s,%s,%s)",
-            (update.effective_user.id,
-             context.user_data['name'],
-             context.user_data['family'],
-             update.message.text)
+            (
+                update.effective_user.id,
+                context.user_data["name"],
+                context.user_data["family"],
+                update.message.text
+            )
         )
+        conn.commit()
         await update.message.reply_text("ثبت نام انجام شد ✅")
-    except Exception:
+    except:
         await update.message.reply_text("شماره دانشجویی تکراری است")
     return ConversationHandler.END
 
@@ -121,7 +134,15 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("دسترسی غیر مجاز")
         return ConversationHandler.END
 
-    keyboard = [["➕ ثبت نمرات"], ["✏️ ویرایش نمره"], ["🗑 حذف نمره"], ["🗑 حذف درس"], ["👥 لیست دانشجوها"], ["🗑 حذف دانشجو"]]
+    keyboard = [
+        ["➕ ثبت نمرات"],
+        ["✏️ ویرایش نمره"],
+        ["🗑 حذف نمره"],
+        ["🗑 حذف درس"],
+        ["👥 لیست دانشجوها"],
+        ["🗑 حذف دانشجو"]
+    ]
+
     await update.message.reply_text(
         "پنل ادمین:",
         reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
@@ -150,10 +171,13 @@ async def admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text == "👥 لیست دانشجوها":
         cursor.execute("SELECT student_id, name, family FROM students")
         rows = cursor.fetchall()
-        msg = "لیست دانشجوها:\n"
-        for sid, n, f in rows:
-            msg += f"{sid} - {n} {f}\n"
-        await update.message.reply_text(msg)
+        if not rows:
+            await update.message.reply_text("دانشجویی ثبت نشده")
+        else:
+            msg = "لیست دانشجوها:\n"
+            for sid, n, f in rows:
+                msg += f"{sid} - {n} {f}\n"
+            await update.message.reply_text(msg)
         return ADMIN_MENU
 
     if text == "🗑 حذف دانشجو":
@@ -162,73 +186,91 @@ async def admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # -------- Bulk grades --------
 async def get_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['course'] = update.message.text
-    context.user_data['count'] = 0
+    context.user_data["course"] = update.message.text
+    context.user_data["count"] = 0
     await update.message.reply_text(
-        "هر خط: شماره_دانشجویی نمره\nبرای پایان END"
+        "نمرات را بفرستید:\n"
+        "هر خط: شماره_دانشجویی نمره\n"
+        "برای پایان: END"
     )
     return BULK_GRADES
 
 async def bulk_grades(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.text.upper() == "END":
-        await update.message.reply_text(f"پایان. ثبت شد: {context.user_data['count']}")
+    if update.message.text.strip().upper() == "END":
+        await update.message.reply_text(
+            f"پایان ثبت نمرات ✅ ({context.user_data['count']} مورد)"
+        )
         return ConversationHandler.END
 
     for line in update.message.text.splitlines():
         try:
             sid, grade = line.split()
             cursor.execute(
-                "INSERT INTO grades VALUES (%s,%s,%s) ON CONFLICT (student_id,course) DO UPDATE SET grade=EXCLUDED.grade",
-                (sid, context.user_data['course'], grade)
+                "INSERT INTO grades VALUES (%s,%s,%s) "
+                "ON CONFLICT (student_id, course) "
+                "DO UPDATE SET grade=EXCLUDED.grade",
+                (sid, context.user_data["course"], grade)
             )
-            context.user_data['count'] += 1
+            context.user_data["count"] += 1
         except:
-            pass
+            continue
 
-    await update.message.reply_text("ذخیره شد…")
+    conn.commit()
+    await update.message.reply_text("بخش دیگری ثبت شد…")
     return BULK_GRADES
 
-# -------- Edit / Delete --------
+# -------- Edit grade --------
 async def edit_sid(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['sid'] = update.message.text
+    context.user_data["sid"] = update.message.text
     await update.message.reply_text("نام درس:")
     return EDIT_COURSE
 
 async def edit_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['course'] = update.message.text
+    context.user_data["course"] = update.message.text
     await update.message.reply_text("نمره جدید:")
     return EDIT_GRADE
 
 async def edit_grade(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cursor.execute(
         "UPDATE grades SET grade=%s WHERE student_id=%s AND course=%s",
-        (update.message.text, context.user_data['sid'], context.user_data['course'])
+        (update.message.text, context.user_data["sid"], context.user_data["course"])
     )
-    await update.message.reply_text("ویرایش شد ✅")
+    conn.commit()
+    await update.message.reply_text("نمره ویرایش شد ✅")
     return ConversationHandler.END
 
+# -------- Delete grade --------
 async def del_sid(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data['sid'] = update.message.text
+    context.user_data["sid"] = update.message.text
     await update.message.reply_text("نام درس:")
     return DEL_COURSE
 
 async def del_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cursor.execute(
         "DELETE FROM grades WHERE student_id=%s AND course=%s",
-        (context.user_data['sid'], update.message.text)
+        (context.user_data["sid"], update.message.text)
     )
-    await update.message.reply_text("حذف شد 🗑")
+    conn.commit()
+    await update.message.reply_text("نمره حذف شد 🗑")
     return ConversationHandler.END
 
-async def del_whole_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    cursor.execute("DELETE FROM grades WHERE course=%s", (update.message.text,))
-    await update.message.reply_text("درس حذف شد 🗑")
-    return ConversationHandler.END
-
+# -------- Delete student --------
 async def del_student(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sid = update.message.text
+    cursor.execute("DELETE FROM grades WHERE student_id=%s", (sid,))
     cursor.execute("DELETE FROM students WHERE student_id=%s", (sid,))
+    conn.commit()
     await update.message.reply_text("دانشجو حذف شد 🗑")
+    return ConversationHandler.END
+
+# -------- Delete whole course --------
+async def del_whole_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    cursor.execute(
+        "DELETE FROM grades WHERE course=%s",
+        (update.message.text,)
+    )
+    conn.commit()
+    await update.message.reply_text("درس حذف شد 🗑")
     return ConversationHandler.END
 
 # ================== APP ==================
@@ -268,5 +310,5 @@ if __name__ == "__main__":
     app.run_webhook(
         listen="0.0.0.0",
         port=int(os.environ.get("PORT", 10000)),
-        webhook_url=os.environ["WEBHOOK_URL"]
+        webhook_url=WEBHOOK_URL
     )
