@@ -1,9 +1,10 @@
 # main.py
-# Telegram Bot with Advanced Admin Panel (FINAL – CLEAN)
-# Compatible with python-telegram-bot[webhooks]==20.7 and Render
+# Telegram Bot with Supabase PostgreSQL (Persistent DB)
+# python-telegram-bot==20.7
+# psycopg2-binary required
 
 import os
-import sqlite3
+import psycopg2
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler,
@@ -12,30 +13,40 @@ from telegram.ext import (
 
 # ================== CONFIG ==================
 TOKEN = os.environ["BOT_TOKEN"]
-ADMIN_IDS = {100724696}  # <-- admin telegram user_id
+ADMIN_IDS = {100724696}  # replace
+
+DB_HOST = os.environ["SUPABASE_HOST"]
+DB_NAME = os.environ["SUPABASE_DB"]
+DB_USER = os.environ["SUPABASE_USER"]
+DB_PASS = os.environ["SUPABASE_PASSWORD"]
+DB_PORT = os.environ.get("SUPABASE_PORT", "5432")
 
 # ================== DATABASE ==================
-conn = sqlite3.connect("grades.db", check_same_thread=False)
+conn = psycopg2.connect(
+    host=DB_HOST,
+    database=DB_NAME,
+    user=DB_USER,
+    password=DB_PASS,
+    port=DB_PORT
+)
+conn.autocommit = True
 cursor = conn.cursor()
 
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS students (
-    telegram_id INTEGER PRIMARY KEY,
+    telegram_id BIGINT PRIMARY KEY,
     name TEXT,
     family TEXT,
     student_id TEXT UNIQUE
-)
-""")
+);
 
-cursor.execute("""
 CREATE TABLE IF NOT EXISTS grades (
-    student_id TEXT,
+    student_id TEXT REFERENCES students(student_id) ON DELETE CASCADE,
     course TEXT,
     grade TEXT,
     UNIQUE(student_id, course)
-)
+);
 """)
-conn.commit()
 
 # ================== STATES ==================
 NAME, FAMILY, STUDENT_ID = range(3)
@@ -68,24 +79,21 @@ async def get_family(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def get_student_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         cursor.execute(
-            "INSERT INTO students VALUES (?,?,?,?)",
-            (
-                update.effective_user.id,
-                context.user_data['name'],
-                context.user_data['family'],
-                update.message.text,
-            )
+            "INSERT INTO students VALUES (%s,%s,%s,%s)",
+            (update.effective_user.id,
+             context.user_data['name'],
+             context.user_data['family'],
+             update.message.text)
         )
-        conn.commit()
         await update.message.reply_text("ثبت نام انجام شد ✅")
-    except:
+    except Exception:
         await update.message.reply_text("شماره دانشجویی تکراری است")
     return ConversationHandler.END
 
 async def my_grades(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cursor.execute(
-        "SELECT student_id FROM students WHERE telegram_id=?",
-        (update.effective_user.id,),
+        "SELECT student_id FROM students WHERE telegram_id=%s",
+        (update.effective_user.id,)
     )
     row = cursor.fetchone()
     if not row:
@@ -93,11 +101,10 @@ async def my_grades(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     cursor.execute(
-        "SELECT course, grade FROM grades WHERE student_id=?",
-        (row[0],),
+        "SELECT course, grade FROM grades WHERE student_id=%s",
+        (row[0],)
     )
     rows = cursor.fetchall()
-
     if not rows:
         await update.message.reply_text("نمره‌ای ثبت نشده")
         return
@@ -113,18 +120,10 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("دسترسی غیر مجاز")
         return ConversationHandler.END
 
-    keyboard = [
-        ["➕ ثبت نمرات"],
-        ["✏️ ویرایش نمره"],
-        ["🗑 حذف نمره"],
-        ["🗑 حذف درس"],
-        ["👥 لیست دانشجوها"],
-        ["🗑 حذف دانشجو"],
-    ]
-
+    keyboard = [["➕ ثبت نمرات"], ["✏️ ویرایش نمره"], ["🗑 حذف نمره"], ["🗑 حذف درس"], ["👥 لیست دانشجوها"], ["🗑 حذف دانشجو"]]
     await update.message.reply_text(
         "پنل ادمین:",
-        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True),
+        reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     )
     return ADMIN_MENU
 
@@ -150,54 +149,45 @@ async def admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text == "👥 لیست دانشجوها":
         cursor.execute("SELECT student_id, name, family FROM students")
         rows = cursor.fetchall()
-        if not rows:
-            await update.message.reply_text("دانشجویی ثبت نشده")
-        else:
-            msg = "لیست دانشجوها:\n"
-            for sid, n, f in rows:
-                msg += f"{sid} - {n} {f}\n"
-            await update.message.reply_text(msg)
+        msg = "لیست دانشجوها:\n"
+        for sid, n, f in rows:
+            msg += f"{sid} - {n} {f}\n"
+        await update.message.reply_text(msg)
         return ADMIN_MENU
 
     if text == "🗑 حذف دانشجو":
-        await update.message.reply_text("شماره دانشجویی دانشجو:")
+        await update.message.reply_text("شماره دانشجویی:")
         return DEL_STUDENT
 
 # -------- Bulk grades --------
 async def get_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['course'] = update.message.text
-    context.user_data['bulk_count'] = 0
+    context.user_data['count'] = 0
     await update.message.reply_text(
-        "نمرات را ارسال کنید (چند پیام مجاز است)\n"
-        "فرمت هر خط: شماره_دانشجویی نمره\n"
-        "برای پایان: END"
+        "هر خط: شماره_دانشجویی نمره\nبرای پایان END"
     )
     return BULK_GRADES
 
 async def bulk_grades(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.message.text.strip().upper() == "END":
-        await update.message.reply_text(
-            f"پایان ثبت نمرات. مجموع: {context.user_data['bulk_count']}"
-        )
+    if update.message.text.upper() == "END":
+        await update.message.reply_text(f"پایان. ثبت شد: {context.user_data['count']}")
         return ConversationHandler.END
 
-    course = context.user_data['course']
     for line in update.message.text.splitlines():
         try:
             sid, grade = line.split()
             cursor.execute(
-                "INSERT OR REPLACE INTO grades VALUES (?,?,?)",
-                (sid, course, grade),
+                "INSERT INTO grades VALUES (%s,%s,%s) ON CONFLICT (student_id,course) DO UPDATE SET grade=EXCLUDED.grade",
+                (sid, context.user_data['course'], grade)
             )
-            context.user_data['bulk_count'] += 1
+            context.user_data['count'] += 1
         except:
             pass
 
-    conn.commit()
-    await update.message.reply_text("بخش جدیدی از نمرات ذخیره شد")
+    await update.message.reply_text("ذخیره شد…")
     return BULK_GRADES
 
-# -------- Edit grade --------
+# -------- Edit / Delete --------
 async def edit_sid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['sid'] = update.message.text
     await update.message.reply_text("نام درس:")
@@ -210,18 +200,12 @@ async def edit_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def edit_grade(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cursor.execute(
-        "UPDATE grades SET grade=? WHERE student_id=? AND course=?",
-        (
-            update.message.text,
-            context.user_data['sid'],
-            context.user_data['course'],
-        ),
+        "UPDATE grades SET grade=%s WHERE student_id=%s AND course=%s",
+        (update.message.text, context.user_data['sid'], context.user_data['course'])
     )
-    conn.commit()
-    await update.message.reply_text("نمره ویرایش شد ✅")
+    await update.message.reply_text("ویرایش شد ✅")
     return ConversationHandler.END
 
-# -------- Delete grade --------
 async def del_sid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['sid'] = update.message.text
     await update.message.reply_text("نام درس:")
@@ -229,35 +213,21 @@ async def del_sid(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def del_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cursor.execute(
-        "DELETE FROM grades WHERE student_id=? AND course=?",
-        (context.user_data['sid'], update.message.text),
+        "DELETE FROM grades WHERE student_id=%s AND course=%s",
+        (context.user_data['sid'], update.message.text)
     )
-    conn.commit()
-    await update.message.reply_text("نمره حذف شد 🗑")
+    await update.message.reply_text("حذف شد 🗑")
     return ConversationHandler.END
 
-# -------- Delete student --------
+async def del_whole_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    cursor.execute("DELETE FROM grades WHERE course=%s", (update.message.text,))
+    await update.message.reply_text("درس حذف شد 🗑")
+    return ConversationHandler.END
+
 async def del_student(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sid = update.message.text
-    cursor.execute("SELECT name, family FROM students WHERE student_id=?", (sid,))
-    row = cursor.fetchone()
-
-    if not row:
-        await update.message.reply_text("دانشجو پیدا نشد")
-        return ConversationHandler.END
-
-    cursor.execute("DELETE FROM grades WHERE student_id=?", (sid,))
-    cursor.execute("DELETE FROM students WHERE student_id=?", (sid,))
-    conn.commit()
-
-    await update.message.reply_text(f"دانشجو {row[0]} {row[1]} حذف شد 🗑")
-    return ConversationHandler.END
-
-# -------- Delete whole course --------
-async def del_whole_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    cursor.execute("DELETE FROM grades WHERE course=?", (update.message.text,))
-    conn.commit()
-    await update.message.reply_text("تمام نمرات این درس حذف شد 🗑")
+    cursor.execute("DELETE FROM students WHERE student_id=%s", (sid,))
+    await update.message.reply_text("دانشجو حذف شد 🗑")
     return ConversationHandler.END
 
 # ================== APP ==================
@@ -266,40 +236,36 @@ app = ApplicationBuilder().token(TOKEN).build()
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("mygrades", my_grades))
 
-app.add_handler(
-    ConversationHandler(
-        entry_points=[CommandHandler("register", register)],
-        states={
-            NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_name)],
-            FAMILY: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_family)],
-            STUDENT_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_student_id)],
-        },
-        fallbacks=[],
-    )
-)
+app.add_handler(ConversationHandler(
+    entry_points=[CommandHandler("register", register)],
+    states={
+        NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_name)],
+        FAMILY: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_family)],
+        STUDENT_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_student_id)],
+    },
+    fallbacks=[]
+))
 
-app.add_handler(
-    ConversationHandler(
-        entry_points=[CommandHandler("admin", admin)],
-        states={
-            ADMIN_MENU: [MessageHandler(filters.TEXT, admin_menu)],
-            COURSE_NAME: [MessageHandler(filters.TEXT, get_course)],
-            BULK_GRADES: [MessageHandler(filters.TEXT, bulk_grades)],
-            EDIT_SID: [MessageHandler(filters.TEXT, edit_sid)],
-            EDIT_COURSE: [MessageHandler(filters.TEXT, edit_course)],
-            EDIT_GRADE: [MessageHandler(filters.TEXT, edit_grade)],
-            DEL_SID: [MessageHandler(filters.TEXT, del_sid)],
-            DEL_COURSE: [MessageHandler(filters.TEXT, del_course)],
-            DEL_ONLY_COURSE: [MessageHandler(filters.TEXT, del_whole_course)],
-            DEL_STUDENT: [MessageHandler(filters.TEXT, del_student)],
-        },
-        fallbacks=[],
-    )
-)
+app.add_handler(ConversationHandler(
+    entry_points=[CommandHandler("admin", admin)],
+    states={
+        ADMIN_MENU: [MessageHandler(filters.TEXT, admin_menu)],
+        COURSE_NAME: [MessageHandler(filters.TEXT, get_course)],
+        BULK_GRADES: [MessageHandler(filters.TEXT, bulk_grades)],
+        EDIT_SID: [MessageHandler(filters.TEXT, edit_sid)],
+        EDIT_COURSE: [MessageHandler(filters.TEXT, edit_course)],
+        EDIT_GRADE: [MessageHandler(filters.TEXT, edit_grade)],
+        DEL_SID: [MessageHandler(filters.TEXT, del_sid)],
+        DEL_COURSE: [MessageHandler(filters.TEXT, del_course)],
+        DEL_ONLY_COURSE: [MessageHandler(filters.TEXT, del_whole_course)],
+        DEL_STUDENT: [MessageHandler(filters.TEXT, del_student)],
+    },
+    fallbacks=[]
+))
 
 if __name__ == "__main__":
     app.run_webhook(
         listen="0.0.0.0",
         port=int(os.environ.get("PORT", 10000)),
-        webhook_url=os.environ["WEBHOOK_URL"],
+        webhook_url=os.environ["WEBHOOK_URL"]
     )
