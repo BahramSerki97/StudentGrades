@@ -1,6 +1,4 @@
-# main.py
-# Telegram Bot with Advanced Admin Panel + Supabase (PostgreSQL)
-# Compatible with Render Free + Supabase Pooler (IPv4)
+# main.py — Neon PostgreSQL version (FINAL)
 
 import os
 import time
@@ -13,31 +11,31 @@ from telegram.ext import (
 
 # ================== CONFIG ==================
 TOKEN = os.environ["BOT_TOKEN"]
-WEBHOOK_URL = os.environ["WEBHOOK_URL"]
-ADMIN_IDS = {100724696}  # <-- admin telegram user_id
+ADMIN_IDS = {100724696}  # <-- ادمین‌ها
 
-# ================== DATABASE ==================
+DB_CONFIG = {
+    "host": os.environ["DB_HOST"],
+    "dbname": os.environ["DB_NAME"],
+    "user": os.environ["DB_USER"],
+    "password": os.environ["DB_PASSWORD"],
+    "port": int(os.environ.get("DB_PORT", 5432)),
+    "sslmode": os.environ.get("DB_SSL", "require"),
+}
+
+# ================== DB CONNECT ==================
 def get_db():
     for i in range(5):
         try:
-            conn = psycopg2.connect(
-                host=os.environ["SUPABASE_HOST"],
-                port=int(os.environ["SUPABASE_PORT"]),
-                dbname=os.environ["SUPABASE_DB"],
-                user=os.environ["SUPABASE_USER"],
-                password=os.environ["SUPABASE_PASSWORD"],
-                sslmode="require",
-                connect_timeout=10
-            )
-            return conn
+            return psycopg2.connect(**DB_CONFIG)
         except Exception as e:
-            print(f"DB connection failed ({i+1}/5): {e}")
+            print(f"DB connection failed ({i+1}/5):", e)
             time.sleep(2)
     raise RuntimeError("Could not connect to database")
 
 conn = get_db()
 cursor = conn.cursor()
 
+# ================== DB INIT ==================
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS students (
     telegram_id BIGINT PRIMARY KEY,
@@ -55,6 +53,7 @@ CREATE TABLE IF NOT EXISTS grades (
     UNIQUE(student_id, course)
 )
 """)
+
 conn.commit()
 
 # ================== STATES ==================
@@ -68,9 +67,7 @@ DEL_STUDENT = 12
 # ================== STUDENT ==================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "سلام 👋\n"
-        "/register ثبت نام\n"
-        "/mygrades مشاهده نمرات"
+        "سلام 👋\n/register ثبت نام\n/mygrades مشاهده نمرات"
     )
 
 async def register(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -95,12 +92,12 @@ async def get_student_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 update.effective_user.id,
                 context.user_data["name"],
                 context.user_data["family"],
-                update.message.text
+                update.message.text,
             )
         )
         conn.commit()
         await update.message.reply_text("ثبت نام انجام شد ✅")
-    except:
+    except Exception:
         await update.message.reply_text("شماره دانشجویی تکراری است")
     return ConversationHandler.END
 
@@ -191,14 +188,14 @@ async def get_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "نمرات را بفرستید:\n"
         "هر خط: شماره_دانشجویی نمره\n"
-        "برای پایان: END"
+        "END برای پایان"
     )
     return BULK_GRADES
 
 async def bulk_grades(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.text.strip().upper() == "END":
         await update.message.reply_text(
-            f"پایان ثبت نمرات ✅ ({context.user_data['count']} مورد)"
+            f"پایان ثبت نمرات. مجموع: {context.user_data['count']}"
         )
         return ConversationHandler.END
 
@@ -207,16 +204,15 @@ async def bulk_grades(update: Update, context: ContextTypes.DEFAULT_TYPE):
             sid, grade = line.split()
             cursor.execute(
                 "INSERT INTO grades VALUES (%s,%s,%s) "
-                "ON CONFLICT (student_id, course) "
-                "DO UPDATE SET grade=EXCLUDED.grade",
+                "ON CONFLICT (student_id, course) DO UPDATE SET grade=EXCLUDED.grade",
                 (sid, context.user_data["course"], grade)
             )
             context.user_data["count"] += 1
         except:
-            continue
+            pass
 
     conn.commit()
-    await update.message.reply_text("بخش دیگری ثبت شد…")
+    await update.message.reply_text("ذخیره شد…")
     return BULK_GRADES
 
 # -------- Edit grade --------
@@ -236,7 +232,7 @@ async def edit_grade(update: Update, context: ContextTypes.DEFAULT_TYPE):
         (update.message.text, context.user_data["sid"], context.user_data["course"])
     )
     conn.commit()
-    await update.message.reply_text("نمره ویرایش شد ✅")
+    await update.message.reply_text("ویرایش شد ✅")
     return ConversationHandler.END
 
 # -------- Delete grade --------
@@ -263,12 +259,9 @@ async def del_student(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("دانشجو حذف شد 🗑")
     return ConversationHandler.END
 
-# -------- Delete whole course --------
+# -------- Delete course --------
 async def del_whole_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    cursor.execute(
-        "DELETE FROM grades WHERE course=%s",
-        (update.message.text,)
-    )
+    cursor.execute("DELETE FROM grades WHERE course=%s", (update.message.text,))
     conn.commit()
     await update.message.reply_text("درس حذف شد 🗑")
     return ConversationHandler.END
@@ -310,5 +303,5 @@ if __name__ == "__main__":
     app.run_webhook(
         listen="0.0.0.0",
         port=int(os.environ.get("PORT", 10000)),
-        webhook_url=WEBHOOK_URL
+        webhook_url=os.environ["WEBHOOK_URL"]
     )
