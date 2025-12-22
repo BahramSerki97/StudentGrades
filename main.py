@@ -184,23 +184,50 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # بقیه هندلرهای ادمین و نمرات بدون تغییر باقی می‌مانند
 # (همان‌هایی که خودت نوشتی)
 
-# ================== APP (WEBHOOK) ==================
-async def main():
-    app: Application = ApplicationBuilder().token(BOT_TOKEN).build()
+# ================== APP (WEBHOOK - CORRECT WAY) ==================
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("register", register))
-    app.add_handler(CommandHandler("mygrades", my_grades))
-    app.add_handler(CommandHandler("admin", admin))
+app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    await app.bot.set_webhook(WEBHOOK_URL)
+app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("register", register))
+app.add_handler(CommandHandler("mygrades", my_grades))
+app.add_handler(CommandHandler("admin", admin))
+app.add_handler(CommandHandler("addadmin", add_admin))
+app.add_handler(CommandHandler("removeadmin", remove_admin))
 
-    await app.run_webhook(
-        listen="0.0.0.0",
-        port=PORT,
-        url_path=WEBHOOK_PATH,
-        webhook_url=WEBHOOK_URL
-    )
+app.add_handler(ConversationHandler(
+    entry_points=[CommandHandler("register", register)],
+    states={
+        NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_name)],
+        FAMILY: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_family)],
+        STUDENT_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_student_id)],
+    },
+    fallbacks=[]
+))
 
-if __name__ == "__main__":
-    asyncio.run(main())
+app.add_handler(ConversationHandler(
+    entry_points=[CommandHandler("admin", admin)],
+    states={
+        ADMIN_MENU: [MessageHandler(filters.TEXT, admin_menu)],
+        COURSE_NAME: [MessageHandler(filters.TEXT, get_course)],
+        BULK_GRADES: [MessageHandler(filters.TEXT, bulk_grades)],
+        EDIT_SID: [MessageHandler(filters.TEXT, edit_sid)],
+        EDIT_COURSE: [MessageHandler(filters.TEXT, edit_course)],
+        EDIT_GRADE: [MessageHandler(filters.TEXT, edit_grade)],
+        DEL_SID: [MessageHandler(filters.TEXT, del_sid)],
+        DEL_COURSE: [MessageHandler(filters.TEXT, del_course)],
+        DEL_ONLY_COURSE: [MessageHandler(filters.TEXT, del_whole_course)],
+        DEL_STUDENT: [MessageHandler(filters.TEXT, del_student)],
+    },
+    fallbacks=[]
+))
+
+print("✅ Setting webhook...")
+
+app.run_webhook(
+    listen="0.0.0.0",
+    port=PORT,
+    url_path=WEBHOOK_PATH,
+    webhook_url=WEBHOOK_URL
+)
+
