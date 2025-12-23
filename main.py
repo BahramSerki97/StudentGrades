@@ -249,7 +249,7 @@ async def bulk_grades(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"پایان ثبت نمرات ✅\n"
             f"تعداد: {context.user_data['count']}"
         )
-        return ConversationHandler.END
+        return ADMIN_MENU
 
     conn = get_conn()
     cur = conn.cursor()
@@ -298,7 +298,7 @@ async def edit_grade(update: Update, context: ContextTypes.DEFAULT_TYPE):
     release_conn(conn)
 
     await update.message.reply_text("نمره ویرایش شد ✅")
-    return ConversationHandler.END
+    return return ADMIN_MENU
 
 async def del_sid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["sid"] = update.message.text
@@ -317,7 +317,7 @@ async def del_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
     release_conn(conn)
 
     await update.message.reply_text("نمره حذف شد 🗑")
-    return ConversationHandler.END
+    return ADMIN_MENU
 
 async def del_student(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn = get_conn()
@@ -329,7 +329,7 @@ async def del_student(update: Update, context: ContextTypes.DEFAULT_TYPE):
     release_conn(conn)
 
     await update.message.reply_text("دانشجو حذف شد 🗑")
-    return ConversationHandler.END
+    return ADMIN_MENU
 
 async def del_whole_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn = get_conn()
@@ -340,7 +340,7 @@ async def del_whole_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
     release_conn(conn)
 
     await update.message.reply_text("درس حذف شد 🗑")
-    return ConversationHandler.END
+    return ADMIN_MENU
 
 # ================== APP ==================
 app = ApplicationBuilder().token(BOT_TOKEN).build()
