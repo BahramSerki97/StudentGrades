@@ -88,6 +88,12 @@ DEL_ONLY_COURSE = 11
 DEL_STUDENT = 12
 
 # ================== STUDENT ==================
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("عملیات لغو شد ❌")
+    return ConversationHandler.END
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "سلام دانشجوی عزیز\n"
@@ -342,39 +348,71 @@ app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("mygrades", my_grades))
 
+app.add_handler(register_conv)
+app.add_handler(admin_conv)
+
 # ❌ این خط حذف شد
 # app.add_handler(CommandHandler("admin", admin))
 
 # ---------- REGISTER ----------
-app.add_handler(ConversationHandler(
+register_conv = ConversationHandler(
     entry_points=[CommandHandler("register", register)],
     states={
-        NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_name)],
-        FAMILY: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_family)],
-        STUDENT_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_student_id)],
+        NAME: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, get_name)
+        ],
+        FAMILY: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, get_family)
+        ],
+        STUDENT_ID: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, get_student_id)
+        ],
     },
-    fallbacks=[],
-))
+    fallbacks=[
+        CommandHandler("cancel", cancel)
+    ],
+)
 
 # ---------- ADMIN PANEL ----------
-app.add_handler(ConversationHandler(
+admin_conv = ConversationHandler(
     entry_points=[CommandHandler("admin", admin)],
     states={
         ADMIN_MENU: [
             MessageHandler(filters.TEXT & ~filters.COMMAND, admin_menu)
         ],
-        COURSE_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_course)],
-        BULK_GRADES: [MessageHandler(filters.TEXT & ~filters.COMMAND, bulk_grades)],
-        EDIT_SID: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_sid)],
-        EDIT_COURSE: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_course)],
-        EDIT_GRADE: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_grade)],
-        DEL_SID: [MessageHandler(filters.TEXT & ~filters.COMMAND, del_sid)],
-        DEL_COURSE: [MessageHandler(filters.TEXT & ~filters.COMMAND, del_course)],
-        DEL_ONLY_COURSE: [MessageHandler(filters.TEXT & ~filters.COMMAND, del_whole_course)],
-        DEL_STUDENT: [MessageHandler(filters.TEXT & ~filters.COMMAND, del_student)],
+        COURSE_NAME: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, get_course)
+        ],
+        BULK_GRADES: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, bulk_grades)
+        ],
+        EDIT_SID: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, edit_sid)
+        ],
+        EDIT_COURSE: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, edit_course)
+        ],
+        EDIT_GRADE: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, edit_grade)
+        ],
+        DEL_SID: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, del_sid)
+        ],
+        DEL_COURSE: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, del_course)
+        ],
+        DEL_ONLY_COURSE: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, del_whole_course)
+        ],
+        DEL_STUDENT: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, del_student)
+        ],
     },
-    fallbacks=[],
-))
+    fallbacks=[
+        CommandHandler("cancel", cancel),
+        CommandHandler("start", cancel),
+    ],
+)
 
 # ================== RUN WEBHOOK ==================
 if __name__ == "__main__":
