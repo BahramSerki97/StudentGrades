@@ -83,6 +83,27 @@ async def send_long_message(update: Update, text: str, chunk_size: int = 4000):
     for i in range(0, len(text), chunk_size):
         await update.message.reply_text(text[i:i + chunk_size])
 
+async def send_student_list(
+    update: Update,
+    header: str,
+    lines: list[str],
+    max_len: int = 4000
+):
+    message = header
+
+    for line in lines:
+        # اگر اضافه شدن این خط باعث عبور از حد مجاز تلگرام شود
+        if len(message) + len(line) + 1 > max_len:
+            await update.message.reply_text(message)
+            message = header + line + "\n"
+        else:
+            message += line + "\n"
+
+    # ارسال پیام آخر
+    if message.strip():
+        await update.message.reply_text(message)
+
+
 # ================== STATES ==================
 NAME, FAMILY, STUDENT_ID = range(3)
 ADMIN_MENU, COURSE_NAME, BULK_GRADES = range(3, 6)
