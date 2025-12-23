@@ -348,9 +348,6 @@ app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("mygrades", my_grades))
 
-app.add_handler(register_conv)
-app.add_handler(admin_conv)
-
 # ❌ این خط حذف شد
 # app.add_handler(CommandHandler("admin", admin))
 
@@ -413,6 +410,9 @@ admin_conv = ConversationHandler(
         CommandHandler("start", cancel),
     ],
 )
+
+app.add_handler(register_conv)
+app.add_handler(admin_conv)
 
 # ================== RUN WEBHOOK ==================
 if __name__ == "__main__":
