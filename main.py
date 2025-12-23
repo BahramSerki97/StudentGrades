@@ -249,22 +249,26 @@ async def admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return DEL_ONLY_COURSE
 
     if text == "👥 لیست دانشجوها":
-        conn = get_conn()
-        cur = conn.cursor()
-        cur.execute("SELECT student_id, name, family FROM students")
-        rows = cur.fetchall()
-        cur.close()
-        release_conn(conn)
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("SELECT student_id, name, family FROM students ORDER BY student_id")
+    rows = cur.fetchall()
+    cur.close()
+    release_conn(conn)
 
-        if not rows:
-            await update.message.reply_text("دانشجویی ثبت نشده")
-        else:
-            msg = "لیست دانشجوها:\n"
-            for sid, n, f in rows:
-                msg += f"{sid} - {n} {f}\n"
-            await update.message.reply_text(msg)
+    if not rows:
+        await update.message.reply_text("دانشجویی ثبت نشده")
+    else:
+        msg = "👥 لیست دانشجوها:\n\n"
 
-        return ADMIN_MENU
+        for index, (sid, n, f) in enumerate(rows, start=1):
+            msg += f"{index}. {sid} - {n} {f}\n"
+
+        msg += f"\n📊 تعداد کل دانشجوها: {len(rows)} نفر"
+
+        await update.message.reply_text(msg)
+
+    return ADMIN_MENU
 
     if text == "🗑 حذف دانشجو":
         await update.message.reply_text("شماره دانشجویی:")
