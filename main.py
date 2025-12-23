@@ -298,7 +298,7 @@ async def edit_grade(update: Update, context: ContextTypes.DEFAULT_TYPE):
     release_conn(conn)
 
     await update.message.reply_text("نمره ویرایش شد ✅")
-    return return ADMIN_MENU
+    return ADMIN_MENU
 
 async def del_sid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["sid"] = update.message.text
