@@ -255,22 +255,22 @@ async def admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             SELECT student_id, name, family
             FROM students
             ORDER BY student_id
-    """)
-    rows = cur.fetchall()
-    cur.close()
-    release_conn(conn)
+        """)
+        rows = cur.fetchall()
+        cur.close()
+        release_conn(conn)
 
-    if not rows:
-        await update.message.reply_text("دانشجویی ثبت نشده")
-    else:
-        msg = "👥 لیست دانشجوها:\n\n"
-        for i, (sid, n, f) in enumerate(rows, start=1):
-            msg += f"{i}. {sid} - {n} {f}\n"
-        msg += f"\n📊 تعداد کل دانشجوها: {len(rows)} نفر"
+        if not rows:
+            await update.message.reply_text("دانشجویی ثبت نشده")
+        else:
+            msg = "👥 لیست دانشجوها:\n\n"
+            for i, (sid, n, f) in enumerate(rows, start=1):
+                msg += f"{i}. {sid} - {n} {f}\n"
+            msg += f"\n📊 تعداد کل دانشجوها: {len(rows)} نفر"
 
-        await send_long_message(update, msg)
+            await send_long_message(update, msg)
 
-    return ADMIN_MENU
+        return ADMIN_MENU   # ✅ فقط اینجا return
 
     elif text == "🗑 حذف دانشجو":
         await update.message.reply_text("شماره دانشجویی:")
