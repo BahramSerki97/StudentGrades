@@ -236,49 +236,51 @@ async def admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("نام درس:")
         return COURSE_NAME
 
-    if text == "✏️ ویرایش نمره":
+    elif text == "✏️ ویرایش نمره":
         await update.message.reply_text("شماره دانشجویی:")
         return EDIT_SID
 
-    if text == "🗑 حذف نمره":
+    elif text == "🗑 حذف نمره":
         await update.message.reply_text("شماره دانشجویی:")
         return DEL_SID
 
-    if text == "🗑 حذف درس":
+    elif text == "🗑 حذف درس":
         await update.message.reply_text("نام درس:")
         return DEL_ONLY_COURSE
 
-    if text == "👥 لیست دانشجوها":
+    elif text == "👥 لیست دانشجوها":
         conn = get_conn()
         cur = conn.cursor()
-        cur.execute("SELECT student_id, name, family FROM students ORDER BY student_id")
+        cur.execute("""
+            SELECT student_id, name, family
+            FROM students
+            ORDER BY student_id
+        """)
         rows = cur.fetchall()
         cur.close()
         release_conn(conn)
 
-    if not rows:
-        await update.message.reply_text("دانشجویی ثبت نشده")
-    else:
-        msg = "👥 لیست دانشجوها:\n\n"
+        if not rows:
+            await update.message.reply_text("دانشجویی ثبت نشده")
+        else:
+            msg = "👥 لیست دانشجوها:\n\n"
+            for i, (sid, n, f) in enumerate(rows, start=1):
+                msg += f"{i}. {sid} - {n} {f}\n"
+            msg += f"\n📊 تعداد کل دانشجوها: {len(rows)} نفر"
+            await update.message.reply_text(msg)
 
-        for index, (sid, n, f) in enumerate(rows, start=1):
-            msg += f"{index}. {sid} - {n} {f}\n"
+        return ADMIN_MENU
 
-        msg += f"\n📊 تعداد کل دانشجوها: {len(rows)} نفر"
-
-        await update.message.reply_text(msg)
-
-    return ADMIN_MENU
-
-    if text == "🗑 حذف دانشجو":
+    elif text == "🗑 حذف دانشجو":
         await update.message.reply_text("شماره دانشجویی:")
         return DEL_STUDENT
 
-    if text == "🔙 بازگشت به پنل":
+    elif text == "🔙 بازگشت به پنل":
         return ADMIN_MENU
 
-    await update.message.reply_text("گزینه نامعتبر ❗")
-    return ADMIN_MENU
+    else:
+        await update.message.reply_text("گزینه نامعتبر ❗")
+        return ADMIN_MENU
 
 # ================== GRADES ==================
 async def get_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
