@@ -203,6 +203,13 @@ async def back_to_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return ADMIN_MENU
 
+async def admin_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "عملیات لغو شد ❌",
+        reply_markup=ADMIN_MENU_KEYBOARD
+    )
+    return ADMIN_MENU
+
 async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
         await update.message.reply_text("دسترسی غیر مجاز ⛔️")
