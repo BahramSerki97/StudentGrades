@@ -79,6 +79,10 @@ def is_admin(user_id: int) -> bool:
     release_conn(conn)
     return ok
 
+async def send_long_message(update: Update, text: str, chunk_size: int = 4000):
+    for i in range(0, len(text), chunk_size):
+        await update.message.reply_text(text[i:i + chunk_size])
+
 # ================== STATES ==================
 NAME, FAMILY, STUDENT_ID = range(3)
 ADMIN_MENU, COURSE_NAME, BULK_GRADES = range(3, 6)
