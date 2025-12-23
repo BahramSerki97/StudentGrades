@@ -337,10 +337,12 @@ async def del_whole_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("register", register))
 app.add_handler(CommandHandler("mygrades", my_grades))
-app.add_handler(CommandHandler("admin", admin))
 
+# ❌ این خط حذف شد
+# app.add_handler(CommandHandler("admin", admin))
+
+# ---------- REGISTER ----------
 app.add_handler(ConversationHandler(
     entry_points=[CommandHandler("register", register)],
     states={
@@ -348,24 +350,27 @@ app.add_handler(ConversationHandler(
         FAMILY: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_family)],
         STUDENT_ID: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_student_id)],
     },
-    fallbacks=[]
+    fallbacks=[],
 ))
 
+# ---------- ADMIN PANEL ----------
 app.add_handler(ConversationHandler(
     entry_points=[CommandHandler("admin", admin)],
     states={
-        ADMIN_MENU: [MessageHandler(filters.TEXT, admin_menu)],
-        COURSE_NAME: [MessageHandler(filters.TEXT, get_course)],
-        BULK_GRADES: [MessageHandler(filters.TEXT, bulk_grades)],
-        EDIT_SID: [MessageHandler(filters.TEXT, edit_sid)],
-        EDIT_COURSE: [MessageHandler(filters.TEXT, edit_course)],
-        EDIT_GRADE: [MessageHandler(filters.TEXT, edit_grade)],
-        DEL_SID: [MessageHandler(filters.TEXT, del_sid)],
-        DEL_COURSE: [MessageHandler(filters.TEXT, del_course)],
-        DEL_ONLY_COURSE: [MessageHandler(filters.TEXT, del_whole_course)],
-        DEL_STUDENT: [MessageHandler(filters.TEXT, del_student)],
+        ADMIN_MENU: [
+            MessageHandler(filters.TEXT & ~filters.COMMAND, admin_menu)
+        ],
+        COURSE_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_course)],
+        BULK_GRADES: [MessageHandler(filters.TEXT & ~filters.COMMAND, bulk_grades)],
+        EDIT_SID: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_sid)],
+        EDIT_COURSE: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_course)],
+        EDIT_GRADE: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_grade)],
+        DEL_SID: [MessageHandler(filters.TEXT & ~filters.COMMAND, del_sid)],
+        DEL_COURSE: [MessageHandler(filters.TEXT & ~filters.COMMAND, del_course)],
+        DEL_ONLY_COURSE: [MessageHandler(filters.TEXT & ~filters.COMMAND, del_whole_course)],
+        DEL_STUDENT: [MessageHandler(filters.TEXT & ~filters.COMMAND, del_student)],
     },
-    fallbacks=[]
+    fallbacks=[],
 ))
 
 # ================== RUN WEBHOOK ==================
@@ -373,5 +378,5 @@ if __name__ == "__main__":
     app.run_webhook(
         listen="0.0.0.0",
         port=int(os.environ.get("PORT", 10000)),
-        webhook_url=WEBHOOK_URL
+        webhook_url=WEBHOOK_URL,
     )
