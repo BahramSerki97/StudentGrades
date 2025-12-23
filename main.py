@@ -251,30 +251,32 @@ async def admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif text == "🗑 حذف درس":
         await update.message.reply_text("نام درس:")
         return DEL_ONLY_COURSE
+elif text == "👥 لیست دانشجوها":
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT student_id, name, family
+        FROM students
+        ORDER BY student_id
+    """)
+    rows = cur.fetchall()
+    cur.close()
+    release_conn(conn)
 
-    elif text == "👥 لیست دانشجوها":
-        conn = get_conn()
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT student_id, name, family
-            FROM students
-            ORDER BY student_id
-        """)
-        rows = cur.fetchall()
-        cur.close()
-        release_conn(conn)
+    if not rows:
+        await update.message.reply_text("دانشجویی ثبت نشده")
+        return ADMIN_MENU
 
-        if not rows:
-            await update.message.reply_text("دانشجویی ثبت نشده")
-        else:
-            msg = "👥 لیست دانشجوها:\n\n"
-            for i, (sid, n, f) in enumerate(rows, start=1):
-                msg += f"{i}. {sid} - {n} {f}\n"
-            msg += f"\n📊 تعداد کل دانشجوها: {len(rows)} نفر"
+    header = "👥 لیست دانشجوها:\n\n"
+    lines = []
 
-            await send_long_message(update, msg)
+    for i, (sid, n, f) in enumerate(rows, start=1):
+        lines.append(f"{i}. {sid} - {n} {f}")
 
-        return ADMIN_MENU   # ✅ فقط اینجا return
+    lines.append(f"\n📊 تعداد کل دانشجوها: {len(rows)} نفر")
+
+    await send_student_list(update, header, lines)
+    return ADMIN_MENU
 
     elif text == "🗑 حذف دانشجو":
         await update.message.reply_text("شماره دانشجویی:")
