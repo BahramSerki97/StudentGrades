@@ -177,18 +177,40 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("دسترسی غیر مجاز")
         return ConversationHandler.END
 
-    keyboard = [
+    ADMIN_MENU_KEYBOARD = ReplyKeyboardMarkup(
+    [
         ["➕ ثبت نمرات"],
         ["✏️ ویرایش نمره"],
         ["🗑 حذف نمره"],
         ["🗑 حذف درس"],
         ["👥 لیست دانشجوها"],
-        ["🗑 حذف دانشجو"]
-    ]
-
+        ["🗑 حذف دانشجو"],
+        ["🔙 بازگشت به پنل"]
+    ],
+    resize_keyboard=True
+)
+    
     await update.message.reply_text(
         "پنل ادمین:",
         reply_markup=ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    )
+    return ADMIN_MENU
+
+async def back_to_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "به پنل ادمین برگشتید 👇",
+        reply_markup=ADMIN_MENU_KEYBOARD
+    )
+    return ADMIN_MENU
+
+async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        await update.message.reply_text("دسترسی غیر مجاز ⛔️")
+        return ConversationHandler.END
+
+    await update.message.reply_text(
+        "پنل ادمین 👇",
+        reply_markup=ADMIN_MENU_KEYBOARD
     )
     return ADMIN_MENU
 
@@ -232,6 +254,12 @@ async def admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text == "🗑 حذف دانشجو":
         await update.message.reply_text("شماره دانشجویی:")
         return DEL_STUDENT
+
+    if text == "🔙 بازگشت به پنل":
+        return ADMIN_MENU
+
+    await update.message.reply_text("گزینه نامعتبر ❗")
+    return ADMIN_MENU
 
 # ================== GRADES ==================
 async def get_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -375,39 +403,58 @@ admin_conv = ConversationHandler(
     entry_points=[CommandHandler("admin", admin)],
     states={
         ADMIN_MENU: [
-            MessageHandler(filters.TEXT & ~filters.COMMAND, admin_menu)
+            MessageHandler(filters.Regex("^🔙 بازگشت به پنل$"), back_to_admin),
+            MessageHandler(filters.TEXT & ~filters.COMMAND, admin_menu),
         ],
+
         COURSE_NAME: [
-            MessageHandler(filters.TEXT & ~filters.COMMAND, get_course)
+            MessageHandler(filters.Regex("^🔙 بازگشت به پنل$"), back_to_admin),
+            MessageHandler(filters.TEXT & ~filters.COMMAND, get_course),
         ],
+
         BULK_GRADES: [
-            MessageHandler(filters.TEXT & ~filters.COMMAND, bulk_grades)
+            MessageHandler(filters.Regex("^🔙 بازگشت به پنل$"), back_to_admin),
+            MessageHandler(filters.TEXT & ~filters.COMMAND, bulk_grades),
         ],
+
         EDIT_SID: [
-            MessageHandler(filters.TEXT & ~filters.COMMAND, edit_sid)
+            MessageHandler(filters.Regex("^🔙 بازگشت به پنل$"), back_to_admin),
+            MessageHandler(filters.TEXT & ~filters.COMMAND, edit_sid),
         ],
+
         EDIT_COURSE: [
-            MessageHandler(filters.TEXT & ~filters.COMMAND, edit_course)
+            MessageHandler(filters.Regex("^🔙 بازگشت به پنل$"), back_to_admin),
+            MessageHandler(filters.TEXT & ~filters.COMMAND, edit_course),
         ],
+
         EDIT_GRADE: [
-            MessageHandler(filters.TEXT & ~filters.COMMAND, edit_grade)
+            MessageHandler(filters.Regex("^🔙 بازگشت به پنل$"), back_to_admin),
+            MessageHandler(filters.TEXT & ~filters.COMMAND, edit_grade),
         ],
+
         DEL_SID: [
-            MessageHandler(filters.TEXT & ~filters.COMMAND, del_sid)
+            MessageHandler(filters.Regex("^🔙 بازگشت به پنل$"), back_to_admin),
+            MessageHandler(filters.TEXT & ~filters.COMMAND, del_sid),
         ],
+
         DEL_COURSE: [
-            MessageHandler(filters.TEXT & ~filters.COMMAND, del_course)
+            MessageHandler(filters.Regex("^🔙 بازگشت به پنل$"), back_to_admin),
+            MessageHandler(filters.TEXT & ~filters.COMMAND, del_course),
         ],
+
         DEL_ONLY_COURSE: [
-            MessageHandler(filters.TEXT & ~filters.COMMAND, del_whole_course)
+            MessageHandler(filters.Regex("^🔙 بازگشت به پنل$"), back_to_admin),
+            MessageHandler(filters.TEXT & ~filters.COMMAND, del_whole_course),
         ],
+
         DEL_STUDENT: [
-            MessageHandler(filters.TEXT & ~filters.COMMAND, del_student)
+            MessageHandler(filters.Regex("^🔙 بازگشت به پنل$"), back_to_admin),
+            MessageHandler(filters.TEXT & ~filters.COMMAND, del_student),
         ],
     },
     fallbacks=[
-        CommandHandler("cancel", cancel),
-        CommandHandler("start", cancel),
+        CommandHandler("cancel", admin_cancel),
+        CommandHandler("start", admin_cancel),
     ],
 )
 
