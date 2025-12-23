@@ -172,12 +172,7 @@ async def my_grades(update: Update, context: ContextTypes.DEFAULT_TYPE):
     release_conn(conn)
 
 # ================== ADMIN ==================
-async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
-        await update.message.reply_text("دسترسی غیر مجاز")
-        return ConversationHandler.END
-
-    ADMIN_MENU_KEYBOARD = ReplyKeyboardMarkup(
+ADMIN_MENU_KEYBOARD = ReplyKeyboardMarkup(
     [
         ["➕ ثبت نمرات"],
         ["✏️ ویرایش نمره"],
@@ -185,10 +180,23 @@ async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ["🗑 حذف درس"],
         ["👥 لیست دانشجوها"],
         ["🗑 حذف دانشجو"],
-        ["🔙 بازگشت به پنل"]
+        ["🔙 بازگشت به پنل"],
     ],
     resize_keyboard=True
 )
+
+
+async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        await update.message.reply_text("دسترسی غیرمجاز ⛔️")
+        return ConversationHandler.END
+
+    await update.message.reply_text(
+        "پنل ادمین 👇",
+        reply_markup=ADMIN_MENU_KEYBOARD
+    )
+    return ADMIN_MENU
+
     
     await update.message.reply_text(
         "پنل ادمین:",
