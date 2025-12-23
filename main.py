@@ -249,12 +249,12 @@ async def admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return DEL_ONLY_COURSE
 
     if text == "👥 لیست دانشجوها":
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("SELECT student_id, name, family FROM students ORDER BY student_id")
-    rows = cur.fetchall()
-    cur.close()
-    release_conn(conn)
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute("SELECT student_id, name, family FROM students ORDER BY student_id")
+        rows = cur.fetchall()
+        cur.close()
+        release_conn(conn)
 
     if not rows:
         await update.message.reply_text("دانشجویی ثبت نشده")
