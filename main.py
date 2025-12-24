@@ -243,47 +243,47 @@ async def admin_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     return ADMIN_MENU
 
-async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
-        await update.message.reply_text("دسترسی غیر مجاز ⛔️")
-        return ConversationHandler.END
-
-    await update.message.reply_text(
-        "پنل ادمین 👇",
-        reply_markup=ADMIN_MENU_KEYBOARD
-    )
-    return ADMIN_MENU
-
 async def admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
 
+    # ---------- ثبت نمرات ----------
     if text == "➕ ثبت نمرات":
         await update.message.reply_text("نام درس:")
         return COURSE_NAME
 
+    # ---------- ویرایش نمره ----------
     if text == "✏️ ویرایش نمره":
         await update.message.reply_text("شماره دانشجویی:")
         return EDIT_SID
 
+    # ---------- حذف نمره ----------
     if text == "🗑 حذف نمره":
         await update.message.reply_text("شماره دانشجویی:")
         return DEL_SID
 
+    # ---------- حذف کل درس ----------
     if text == "🗑 حذف درس":
         await update.message.reply_text("نام درس:")
         return DEL_ONLY_COURSE
 
+    # ---------- لیست دانشجوها ----------
     if text == "👥 لیست دانشجوها":
-        conn = get_conn()
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT student_id, name, family
-            FROM students
-            ORDER BY student_id
-        """)
-        rows = cur.fetchall()
-        cur.close()
-        release_conn(conn)
+        conn = None
+        try:
+            conn = get_conn()
+            cur = conn.cursor()
+
+            cur.execute("""
+                SELECT student_id, name, family
+                FROM students
+                ORDER BY student_id
+            """)
+            rows = cur.fetchall()
+            cur.close()
+
+        finally:
+            if conn:
+                release_conn(conn)
 
         if not rows:
             await update.message.reply_text("دانشجویی ثبت نشده")
@@ -291,23 +291,28 @@ async def admin_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         header = "👥 لیست دانشجوها:\n\n"
         lines = []
-        for i, (sid, n, f) in enumerate(rows, start=1):
-            lines.append(f"{i}. {sid} - {n} {f}")
+
+        for i, (sid, name, family) in enumerate(rows, start=1):
+            lines.append(f"{i}. {sid} - {name} {family}")
 
         lines.append(f"\n📊 تعداد کل دانشجوها: {len(rows)} نفر")
 
         await send_student_list(update, header, lines)
         return ADMIN_MENU
 
+    # ---------- حذف دانشجو ----------
     if text == "🗑 حذف دانشجو":
         await update.message.reply_text("شماره دانشجویی:")
         return DEL_STUDENT
 
+    # ---------- بازگشت ----------
     if text == "🔙 بازگشت به پنل":
         return ADMIN_MENU
 
+    # ---------- گزینه نامعتبر ----------
     await update.message.reply_text("گزینه نامعتبر ❗")
     return ADMIN_MENU
+
 
 # ================== GRADES ==================
 async def get_course(update: Update, context: ContextTypes.DEFAULT_TYPE):
