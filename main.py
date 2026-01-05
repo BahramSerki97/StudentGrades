@@ -18,7 +18,7 @@ DATABASE_URL = os.environ["DATABASE_URL"]  # Neon connection string
 # ================== DATABASE (POOL) ==================
 db_pool = SimpleConnectionPool(
     minconn=1,
-    maxconn=5,
+    maxconn=15,
     dsn=DATABASE_URL,
     sslmode="require"
 )
@@ -71,13 +71,21 @@ init_db()
 
 # ================== HELPERS ==================
 def is_admin(user_id: int) -> bool:
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("SELECT 1 FROM admins WHERE telegram_id=%s", (user_id,))
-    ok = cur.fetchone() is not None
-    cur.close()
-    release_conn(conn)
-    return ok
+    conn = None
+    cur = None
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT 1 FROM admins WHERE telegram_id=%s",
+            (user_id,)
+        )
+        return cur.fetchone() is not None
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            release_conn(conn)
 
 async def send_long_message(update: Update, text: str, chunk_size: int = 4000):
     for i in range(0, len(text), chunk_size):
@@ -165,36 +173,40 @@ async def get_student_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 async def my_grades(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    conn = get_conn()
-    cur = conn.cursor()
+    conn = None
+    cur = None
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
 
-    cur.execute(
-        "SELECT student_id FROM students WHERE telegram_id=%s",
-        (update.effective_user.id,)
-    )
-    row = cur.fetchone()
-    if not row:
-        await update.message.reply_text("ابتدا ثبت نام کنید")
-        cur.close()
-        release_conn(conn)
-        return
+        cur.execute(
+            "SELECT student_id FROM students WHERE telegram_id=%s",
+            (update.effective_user.id,)
+        )
+        row = cur.fetchone()
+        if not row:
+            await update.message.reply_text("ابتدا ثبت نام کنید")
+            return
 
-    cur.execute(
-        "SELECT course, grade FROM grades WHERE student_id=%s",
-        (row[0],)
-    )
-    rows = cur.fetchall()
+        cur.execute(
+            "SELECT course, grade FROM grades WHERE student_id=%s",
+            (row[0],)
+        )
+        rows = cur.fetchall()
 
-    if not rows:
-        await update.message.reply_text("نمره‌ای ثبت نشده")
-    else:
-        msg = "نمرات شما:\n"
-        for c, g in rows:
-            msg += f"{c}: {g}\n"
-        await update.message.reply_text(msg)
+        if not rows:
+            await update.message.reply_text("نمره‌ای ثبت نشده")
+        else:
+            msg = "نمرات شما:\n"
+            for c, g in rows:
+                msg += f"{c}: {g}\n"
+            await update.message.reply_text(msg)
 
-    cur.close()
-    release_conn(conn)
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            release_conn(conn)
 
 # ================== ADMIN ==================
 ADMIN_MENU_KEYBOARD = ReplyKeyboardMarkup(
@@ -332,27 +344,34 @@ async def bulk_grades(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return ADMIN_MENU
 
-    conn = get_conn()
-    cur = conn.cursor()
+    conn = None
+    cur = None
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
 
-    for line in update.message.text.splitlines():
-        try:
-            sid, grade = line.split()
-            cur.execute(
-                """
-                INSERT INTO grades VALUES (%s,%s,%s)
-                ON CONFLICT (student_id, course)
-                DO UPDATE SET grade=EXCLUDED.grade
-                """,
-                (sid, context.user_data["course"], grade)
-            )
-            context.user_data["count"] += 1
-        except:
-            pass
+        for line in update.message.text.splitlines():
+            try:
+                sid, grade = line.split()
+                cur.execute(
+                    """
+                    INSERT INTO grades VALUES (%s,%s,%s)
+                    ON CONFLICT (student_id, course)
+                    DO UPDATE SET grade=EXCLUDED.grade
+                    """,
+                    (sid, context.user_data["course"], grade)
+                )
+                context.user_data["count"] += 1
+            except:
+                pass
 
-    conn.commit()
-    cur.close()
-    release_conn(conn)
+        conn.commit()
+
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            release_conn(conn)
 
     await update.message.reply_text("بخشی از نمرات ذخیره شد…")
     return BULK_GRADES
